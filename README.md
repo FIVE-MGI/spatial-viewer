@@ -57,4 +57,6 @@ placement is not good enough.
 
 ## License
 
-Not yet chosen. Until one is added, no rights are granted.
+©2026 Washington University. Non-commercial, non-clinical research use; see
+[LICENSE](LICENSE). For a commercial license, contact Washington University's Office
+of Technology Management at otm@wustl.edu.
