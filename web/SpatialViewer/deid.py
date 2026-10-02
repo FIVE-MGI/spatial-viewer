@@ -21,7 +21,7 @@ number and the letter: "1b".
 
 Command line
     python deid.py text  "T9941 / INT9942 / 9943 - Akoya"   -> Samples 1 / 2 / 3 - Akoya   (deid:ok)
-    python deid.py check web\SpatialViewer D:\SpatialVizStatic\x\manifest.json
+    python deid.py check web\SpatialViewer <export root>\x\manifest.json
                         (exit 1 and list every leftover ID; scans names and text files)
     python deid.py key  (print the key - keep it off screens you share)
 """

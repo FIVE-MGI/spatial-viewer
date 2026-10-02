@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 r"""Serve an export folder over HTTP with CORS, for testing before upload.
 
-    python static_serve.py D:\SpatialVizStatic 8765
+    python static_serve.py <export root> 8765
 
 then open the page with ?static=http://localhost:8765 - that path reads the files
 directly and skips the password and the blob token entirely.

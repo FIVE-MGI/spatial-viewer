@@ -1,6 +1,6 @@
 r"""Tile + transcript server for the SpatialViewer page in this folder.
 
-    python server.py --cache D:\SpatialVizCache [--port 8760] [--web ..]
+    python server.py --cache <export root> [--port 8760] [--web ..]
 
 API (all GET):
     /api/datasets                                   list

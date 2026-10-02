@@ -1,8 +1,8 @@
 r"""Build the viewer cache for one dataset.
 
     python prepare.py akoya  --src <folder of NN_Marker_Sample_gray.tif> --id sample1 --out <cache folder>
-    python prepare.py tiff   --src <stack.tif|qptiff|ome.tif>            --id x        --out D:\SpatialVizCache
-    python prepare.py visium --image <hires.tif> --outs <spaceranger outs> --id sample1_visiumhd --out D:\SpatialVizCache
+    python prepare.py tiff   --src <stack.tif|qptiff|ome.tif>            --id x        --out <export root>
+    python prepare.py visium --image <hires.tif> --outs <spaceranger outs> --id sample1_visiumhd --out <export root>
 
 Common options: --label, --pixel-size (µm/px), --tile, --geojson "Label=path" (repeatable),
 --rgb-split (keep RGB files as three channels instead of max-projecting).
