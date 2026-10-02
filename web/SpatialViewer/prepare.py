@@ -104,7 +104,7 @@ def main(argv=None):
     r = sub.add_parser("rnaseq", help="single-cell / nucleus RNA-seq -> static UMAP dataset (written straight to --dest)")
     r.add_argument("--id", required=True)
     r.add_argument("--label")
-    r.add_argument("--dest", required=True, help="static export root, e.g. D:\\SpatialVizStatic")
+    r.add_argument("--dest", required=True, help="static export root")
     r.add_argument("--h5ad", help="AnnData file with an embedding in obsm")
     r.add_argument("--embedding", default="X_umap")
     r.add_argument("--mtx", help="10x matrix folder (matrix.mtx, features.tsv, barcodes.tsv)")
