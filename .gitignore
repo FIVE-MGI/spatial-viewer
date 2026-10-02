@@ -1,0 +1,20 @@
+# The only file that names a particular study: its datasets, institution and logos.
+web/SpatialViewer/config.js
+
+# Local branding assets that go with config.js
+web/SpatialViewer/logos/
+
+# Python / Node
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Agent tooling
+.claude/

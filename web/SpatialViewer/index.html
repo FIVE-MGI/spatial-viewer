@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Spatial Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" type="image/png" href="../extras/FavIco.png">
+  <link href="styles.css?v=20261002e" rel="stylesheet" />
+</head>
+<body>
+  <div class="app">
+    <aside id="sidebar" class="sidebar" aria-label="Controls">
+      <header class="brand">
+        <div class="logos" id="brandLogos"></div>
+        <h1 id="brandTitle"></h1>
+        <button id="btnAbout" class="linkish" type="button">Read more about this project →</button>
+        <a id="lnkPaper" class="linkish" href="#" target="_blank" rel="noopener">Link to paper →</a>
+      </header>
+
+      <section class="panel">
+        <label class="row">
+          <span>Dataset</span>
+          <select id="dsSelect"></select>
+        </label>
+        <div id="dsInfo" class="meta"></div>
+        <div class="btnrow">
+          <button id="btnFit" title="Fit whole image (R)">Fit</button>
+          <button id="btnAllOn" title="Show every channel">All stains on</button>
+          <button id="btnAllOff" title="Hide every channel">All stains off</button>
+          <button id="btnImage" title="Show or hide the image without losing your channel settings">Image off</button>
+        </div>
+      </section>
+
+      <section class="panel" id="panelChannels">
+        <h2><span id="chanTitle">Markers / stains</span> <span id="chanCount" class="count"></span></h2>
+        <label class="row slim"><span>Image opacity</span>
+          <input id="imgOpacity" type="range" min="0" max="1" step="0.02" value="1"></label>
+        <div class="search"><input id="chanSearch" type="text" placeholder="Filter stains…" autocomplete="off" /></div>
+        <div id="chanList" class="list"></div>
+      </section>
+
+      <section class="panel" id="panelGenes" hidden>
+        <h2>Transcripts <span id="geneCount" class="count"></span></h2>
+        <label class="row"><span>Layer</span><select id="exprSelect"></select></label>
+        <div class="search">
+          <input id="geneSearch" type="text" placeholder="Search gene… (Enter adds top hit)" autocomplete="off" />
+          <div id="geneResults" class="results" hidden></div>
+        </div>
+        <div id="geneList" class="list"></div>
+        <label class="row slim"><span>View</span>
+          <select id="geneBlend"><option value="normal">Normal</option><option value="heatmap">Density</option></select></label>
+        <label class="row slim" id="rowGenePalette"><span>Color</span>
+          <select id="genePalette">
+            <option value="genes">Gene colors (overlap darkens)</option>
+            <option value="viridis">Viridis</option></select></label>
+        <label class="row slim"><span>Transcript opacity</span>
+          <input id="geneOpacity" type="range" min="0" max="1" step="0.02" value="1"></label>
+        <label class="row slim"><span>Point size ×</span>
+          <input id="pointScale" type="range" min="0.25" max="4" step="0.05" value="1"></label>
+        <label class="row slim check"><input id="tissueBins" type="checkbox" /><span>Show all in-tissue bins</span></label>
+      </section>
+
+      <section class="panel" id="panelRna" hidden>
+        <h2>Gene expression (UMAP) <span id="rnaCount" class="count"></span></h2>
+        <label class="row slim check"><input id="rnaLabels" type="checkbox" checked /><span>Cluster labels</span></label>
+        <div id="rnaLegend" class="legend"></div>
+        <div class="search">
+          <input id="rnaSearch" type="text" placeholder="Add gene… (Enter adds top hit)" autocomplete="off" />
+          <div id="rnaResults" class="results" hidden></div>
+        </div>
+        <div id="rnaGeneList" class="list"></div>
+        <label class="row slim"><span>View</span>
+          <select id="rnaView"><option value="normal">Normal</option><option value="density">Density</option></select></label>
+        <label class="row slim"><span>Color</span>
+          <select id="rnaPalette">
+            <option value="genes">Gene colors (overlap darkens)</option>
+            <option value="viridis" selected>Viridis</option></select></label>
+        <label class="row slim" id="rowRnaBin"><span>Bin size</span>
+          <select id="rnaBin">
+            <option value="1">fine</option><option value="2">2x</option>
+            <option value="4">4x</option><option value="8">8x</option></select></label>
+        <label class="row slim"><span>Point size</span>
+          <input id="rnaPointSize" type="range" min="0.5" max="6" step="0.25" value="2"></label>
+        <div class="btnrow"><button id="rnaClear">Clear genes</button></div>
+      </section>
+
+      <section class="panel" id="panelOverlays" hidden>
+        <h2>Overlays</h2>
+        <div id="overlayList" class="list"></div>
+      </section>
+
+      <section class="panel help">
+        <div>Scroll to zoom · drag to pan · <kbd>R</kbd> fit</div>
+        <div id="apiInfo" class="meta"></div>
+        <div class="colophon" id="colophon"></div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <div id="viewport"></div>
+      <div id="umapLabels" class="umap-labels" hidden></div>
+      <div id="densityKey" class="dkey" hidden></div>
+      <div id="hud" class="hud">
+        <span id="hudXY">–</span>
+        <span id="hudZoom"></span>
+      </div>
+      <div id="scalebar" class="scalebar"><div class="bar"></div><span class="lbl"></span></div>
+      <div id="status" class="status" hidden></div>
+      <form id="login" class="login" hidden autocomplete="off">
+        <h3>Spatial Viewer</h3>
+        <p id="loginMsg">This server needs a password.</p>
+        <input id="loginPw" type="password" placeholder="Password" autocomplete="current-password" />
+        <button type="submit">Open</button>
+      </form>
+    </main>
+  </div>
+
+  <div id="aboutBack" class="modal-back" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+      <button id="aboutClose" class="modal-x" type="button" aria-label="Close">×</button>
+      <h2 id="aboutTitle">About this project</h2>
+      <!-- Body is fetched from the private container on open, not shipped in this
+           page: anything written here would be readable without the password. -->
+      <div id="aboutBody"><p class="pending">Loading…</p></div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/deck.gl@9.1.12/dist.min.js"></script>
+  <script src="config.js?v=20261002e"></script>
+  <script src="viewer.js?v=20261002e"></script>
+</body>
+</html>

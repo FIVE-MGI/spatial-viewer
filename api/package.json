@@ -1,0 +1,10 @@
+{
+  "name": "spatial-viewer-api",
+  "version": "1.0.0",
+  "description": "Azure Static Web Apps managed functions. /api/token trades the shared viewer password for a short-lived read-only SAS over the private SpatialViewer container.",
+  "private": true,
+  "main": "token/index.js",
+  "dependencies": {
+    "@azure/storage-blob": "^12.17.0"
+  }
+}

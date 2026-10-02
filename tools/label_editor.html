@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>UMAP label placer</title>
+<style>
+  :root { --bg:#0e1117; --panel:#161b24; --panel2:#1d2430; --line:#2a3242; --text:#e6e9ef; --muted:#8b93a3; --accent:#4da3ff; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .app { display:grid; grid-template-columns:320px 1fr; height:100vh; }
+  aside { background:var(--panel); border-right:1px solid var(--line); padding:14px; overflow-y:auto; }
+  h1 { font-size:15px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:11px; margin-bottom:14px; }
+  label.row { display:block; margin:10px 0 4px; color:var(--muted); font-size:11px;
+    text-transform:uppercase; letter-spacing:.05em; }
+  input,select,textarea,button { width:100%; background:var(--panel2); color:var(--text);
+    border:1px solid var(--line); border-radius:5px; padding:6px 8px; font:inherit; }
+  textarea { font:11px/1.4 ui-monospace,Menlo,Consolas,monospace; height:170px; resize:vertical; white-space:pre; }
+  button { cursor:pointer; margin-top:8px; }
+  button:hover { border-color:var(--accent); }
+  .btnrow { display:flex; gap:6px; }
+  .hint { color:var(--muted); font-size:11px; margin-top:10px; }
+  .list { margin-top:10px; border-top:1px solid var(--line); padding-top:8px; }
+  .item { display:flex; align-items:center; gap:7px; padding:3px 0; font-size:12px; }
+  .item i { width:14px; height:14px; border-radius:3px; flex:0 0 auto; }
+  .item .xy { margin-left:auto; color:var(--muted); font:11px ui-monospace,monospace; }
+  .item.moved .xy { color:var(--accent); }
+  main { position:relative; overflow:hidden; }
+  canvas { display:block; width:100%; height:100%; }
+  #status { position:absolute; left:12px; bottom:12px; background:rgba(10,14,22,.85);
+    border:1px solid var(--line); border-radius:6px; padding:6px 10px; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>UMAP label placer</h1>
+    <div class="sub">Drag each label where it should sit. Positions are stored in UMAP
+      coordinates, so they hold at any zoom.</div>
+
+    <label class="row">Data base URL</label>
+    <input id="base" value="http://localhost:8765" />
+
+    <label class="row">Dataset id</label>
+    <input id="ds" placeholder="folder name under the base URL" />
+
+    <button id="load">Load</button>
+
+    <div class="btnrow">
+      <button id="resetAll" title="Put every label back on its cluster centroid">Reset all</button>
+      <button id="fit" title="Refit the view">Fit</button>
+    </div>
+
+    <div id="list" class="list"></div>
+
+    <label class="row">Saved positions</label>
+    <textarea id="out" spellcheck="false"></textarea>
+    <div class="btnrow">
+      <button id="copy">Copy</button>
+      <button id="download">Download</button>
+      <button id="load2" title="Read positions back out of the box">Import</button>
+    </div>
+    <div class="hint">Both datasets accumulate into the same object: place one, then load
+      the other and place it too. The box keeps what it already had.</div>
+  </aside>
+  <main>
+    <canvas id="cv"></canvas>
+    <div id="status">Pick a dataset and press Load.</div>
+  </main>
+</div>
+<script>
+// The viewer's palette and luminance floors, so a label placed here reads the way it
+// will read there.
+var CAT_COLORS = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#bcbd22",
+  "#17becf","#aec7e8","#ffbb78","#98df8a","#ff9896","#c5b0d5","#c49c94","#f7b6d2","#dbdb8d","#9edae5",
+  "#7f7f7f","#393b79"];
+function hexToRgb(h) { return [1,3,5].map(function (i) { return parseInt(h.slice(i, i+2), 16); }); }
+function lin(c) { c /= 255; return c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); }
+function lum(a) { return 0.2126*lin(a[0]) + 0.7152*lin(a[1]) + 0.0722*lin(a[2]); }
+function liftTo(rgb, target) {
+  if (lum(rgb) >= target) return rgb;
+  var lo = 0, hi = 0.95;
+  for (var i = 0; i < 14; i++) {
+    var t = (lo + hi) / 2;
+    var test = rgb.map(function (v) { return v + (255-v)*t; });
+    if (lum(test) >= target) hi = t; else lo = t;
+  }
+  return rgb.map(function (v) { return Math.round(v + (255-v)*hi); });
+}
+function rgbCss(a) { return "rgb(" + a[0] + "," + a[1] + "," + a[2] + ")"; }
+
+var $ = function (id) { return document.getElementById(id); };
+var cv = $("cv"), ctx = cv.getContext("2d");
+var D = null;        // loaded dataset
+var placed = {};     // cluster name -> [x, y] in UMAP units
+var saved = {};      // every dataset placed so far
+var view = { s: 1, ox: 0, oy: 0 };
+var drag = null;
+
+function status(t) { $("status").textContent = t; }
+
+function load() {
+  var base = $("base").value.replace(/\/$/, ""), id = $("ds").value;
+  status("Loading " + id + "…");
+  fetch(base + "/" + id + "/manifest.json", { cache: "no-cache" })
+    .then(function (r) { if (!r.ok) throw new Error("manifest " + r.status); return r.json(); })
+    .then(function (m) {
+      var obs = m.obs || [];
+      var col = null;
+      for (var i = 0; i < obs.length; i++) {
+        if (obs[i].name === "leiden_heli" || obs[i].name === "leiden_bigGroup") { col = obs[i]; break; }
+      }
+      if (!col) for (var j = 0; j < obs.length; j++) if (obs[j].type === "category") { col = obs[j]; break; }
+      if (!col) throw new Error("no categorical column in this dataset");
+      return Promise.all([
+        fetch(base + "/" + id + "/umap.bin").then(function (r) {
+          if (!r.ok) throw new Error("umap.bin " + r.status); return r.arrayBuffer(); }),
+        fetch(base + "/" + id + "/obs/" + col.file).then(function (r) {
+          if (!r.ok) throw new Error("obs " + r.status); return r.arrayBuffer(); }),
+        Promise.resolve({ m: m, col: col }),
+      ]);
+    })
+    .then(function (res) {
+      var pos = new Float32Array(res[0]), codes = new Uint16Array(res[1]);
+      var m = res[2].m, col = res[2].col, cats = col.categories;
+      var lut = cats.map(function (_, i) {
+        var hex = (col.colors && col.colors[i]) || CAT_COLORS[i % CAT_COLORS.length];
+        return liftTo(hexToRgb(hex), 0.21);
+      });
+      D = {
+        id: id, pos: pos, codes: codes, cats: cats, lut: lut,
+        labelLut: lut.map(function (c) { return liftTo(c, 0.5); }),
+        n: pos.length / 2, bounds: m.bounds, column: col.name,
+      };
+      placed = saved[id] ? JSON.parse(JSON.stringify(saved[id])) : {};
+      centroids(); buildList(); emit(); resize(); fit(); draw();
+      status(id + " — " + D.n.toLocaleString() + " cells, " + cats.length +
+        " clusters, colored by " + col.name);
+    })
+    .catch(function (e) { status("Could not load: " + e.message); });
+}
+
+// anything not already placed starts on its cluster's centre
+function centroids() {
+  var K = D.cats.length;
+  var sx = new Float64Array(K), sy = new Float64Array(K), c = new Float64Array(K);
+  for (var i = 0; i < D.n; i++) {
+    var k = D.codes[i]; if (k >= K) continue;
+    sx[k] += D.pos[i*2]; sy[k] += D.pos[i*2+1]; c[k] += 1;
+  }
+  D.centroid = [];
+  for (var k2 = 0; k2 < K; k2++) {
+    D.centroid[k2] = c[k2] ? [sx[k2]/c[k2], sy[k2]/c[k2]] : [0, 0];
+    if (!placed[D.cats[k2]]) placed[D.cats[k2]] = D.centroid[k2].slice();
+  }
+}
+
+function fit() {
+  var b = D.bounds, w = cv.width, h = cv.height;
+  var s = Math.min(w / Math.max(b[2]-b[0], 1e-6), h / Math.max(b[3]-b[1], 1e-6)) * 0.88;
+  view.s = s;
+  view.ox = w/2 - ((b[0]+b[2])/2) * s;
+  view.oy = h/2 + ((b[1]+b[3])/2) * s;     // y runs up in UMAP space, down on screen
+}
+function toX(x) { return x * view.s + view.ox; }
+function toY(y) { return -y * view.s + view.oy; }
+function fromX(p) { return (p - view.ox) / view.s; }
+function fromY(p) { return -(p - view.oy) / view.s; }
+
+function resize() {
+  var r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+  if (!w || !h) return;                    // mid-layout; another resize will follow
+  cv.width = w; cv.height = h;
+  if (D) { fit(); draw(); }
+}
+
+function labelBox(name, x, y) {
+  ctx.font = "600 13px system-ui, sans-serif";
+  var w = ctx.measureText(name).width + 14, h = 21;
+  return { x: toX(x) - w/2, y: toY(y) - h/2, w: w, h: h };
+}
+
+function draw() {
+  // The pane can hand us a zero-sized canvas while it is still laying out, and
+  // createImageData throws on that. Nothing to draw into yet, so wait for the
+  // resize that follows rather than taking the whole load down with it.
+  if (!cv.width || !cv.height) return;
+  ctx.fillStyle = "#0b0e14"; ctx.fillRect(0, 0, cv.width, cv.height);
+  if (!D) return;
+  var img = ctx.createImageData(cv.width, cv.height), px = img.data;
+  for (var i = 0; i < D.n; i++) {
+    var X = toX(D.pos[i*2]) | 0, Y = toY(D.pos[i*2+1]) | 0;
+    if (X < 0 || Y < 0 || X >= cv.width || Y >= cv.height) continue;
+    var c = D.lut[D.codes[i]] || [150,150,150], o = (Y * cv.width + X) * 4;
+    px[o] = c[0]; px[o+1] = c[1]; px[o+2] = c[2]; px[o+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  for (var k = 0; k < D.cats.length; k++) {
+    var name = D.cats[k], p = placed[name]; if (!p) continue;
+    var b = labelBox(name, p[0], p[1]);
+    ctx.fillStyle = "rgba(8,11,18,.91)";
+    ctx.strokeStyle = "rgba(" + D.labelLut[k].join(",") + ",.45)";
+    ctx.lineWidth = 1;
+    roundRect(b.x, b.y, b.w, b.h, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = rgbCss(D.labelLut[k]);
+    ctx.font = "600 13px system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(name, b.x + b.w/2, b.y + b.h/2 + 0.5);
+  }
+}
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y); ctx.arcTo(x+w, y, x+w, y+h, r); ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r); ctx.arcTo(x, y, x+w, y, r); ctx.closePath();
+}
+
+function hit(mx, my) {
+  for (var k = D.cats.length - 1; k >= 0; k--) {
+    var name = D.cats[k], p = placed[name]; if (!p) continue;
+    var b = labelBox(name, p[0], p[1]);
+    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) return name;
+  }
+  return null;
+}
+function mouse(e) {
+  var r = cv.getBoundingClientRect(), dpr = cv.width / r.width;
+  return [(e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr];
+}
+cv.addEventListener("mousedown", function (e) {
+  if (!D) return;
+  var m = mouse(e), name = hit(m[0], m[1]);
+  if (!name) return;
+  var p = placed[name];
+  drag = { name: name, dx: m[0] - toX(p[0]), dy: m[1] - toY(p[1]) };
+  cv.style.cursor = "grabbing";
+});
+window.addEventListener("mousemove", function (e) {
+  if (!D) return;
+  var m = mouse(e);
+  if (!drag) { cv.style.cursor = hit(m[0], m[1]) ? "grab" : "default"; return; }
+  placed[drag.name] = [fromX(m[0] - drag.dx), fromY(m[1] - drag.dy)];
+  draw(); buildList(); emit();
+});
+window.addEventListener("mouseup", function () { drag = null; cv.style.cursor = "default"; });
+
+function buildList() {
+  var el = $("list"); el.innerHTML = "";
+  for (var k = 0; k < D.cats.length; k++) {
+    var name = D.cats[k], p = placed[name], c = D.centroid[k];
+    var moved = Math.hypot(p[0]-c[0], p[1]-c[1]) > 1e-6;
+    var d = document.createElement("div");
+    d.className = "item" + (moved ? " moved" : "");
+    d.innerHTML = '<i style="background:' + rgbCss(D.lut[k]) + '"></i><span>' + name + "</span>" +
+      '<span class="xy">' + p[0].toFixed(2) + ", " + p[1].toFixed(2) + "</span>";
+    el.appendChild(d);
+  }
+}
+
+function emit() {
+  saved[D.id] = JSON.parse(JSON.stringify(placed));
+  $("out").value = JSON.stringify(saved, null, 2);
+}
+
+$("load").onclick = load;
+$("fit").onclick = function () { if (D) { fit(); draw(); } };
+$("resetAll").onclick = function () {
+  if (!D) return;
+  for (var k = 0; k < D.cats.length; k++) placed[D.cats[k]] = D.centroid[k].slice();
+  draw(); buildList(); emit();
+};
+$("copy").onclick = function () {
+  $("out").select(); document.execCommand("copy"); status("Copied.");
+};
+$("download").onclick = function () {
+  var blob = new Blob([$("out").value || "{}"], { type: "application/json" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "labelPositions.json"; a.click();
+};
+$("load2").onclick = function () {
+  try {
+    saved = JSON.parse($("out").value || "{}");
+    if (D && saved[D.id]) { placed = JSON.parse(JSON.stringify(saved[D.id])); draw(); buildList(); }
+    status("Imported.");
+  } catch (e) { status("Not valid JSON: " + e.message); }
+};
+window.addEventListener("resize", resize);
+resize();
+</script>
+</body>
+</html>
