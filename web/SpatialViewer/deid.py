@@ -6,7 +6,7 @@ plain number (1, 2, 3 ...). The same ID always gets the same number, across
 every dataset and every run, because the mapping is kept in ONE private key
 file that is never published:
 
-    D:\SpatialVizPrivate\sample_id_key.csv     (override: SPATIALVIZ_KEY env var)
+    sample_id_key.csv     (set SPATIALVIZ_KEY to keep it outside the working tree)
 
 Key columns: number, original_id, first_seen, context.
 
@@ -36,7 +36,7 @@ import sys
 import threading
 from pathlib import Path
 
-KEY_PATH = Path(os.environ.get("SPATIALVIZ_KEY", r"D:\SpatialVizPrivate\sample_id_key.csv"))
+KEY_PATH = Path(os.environ.get("SPATIALVIZ_KEY", "sample_id_key.csv"))
 
 # prefix + 2-4 digits, not glued to a preceding letter/digit; optional single-letter suffix
 #
